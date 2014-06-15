@@ -13,6 +13,7 @@
  */
 package com.entertailion.java.caster;
 
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.net.InetAddress;
@@ -31,6 +32,8 @@ import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 
 import com.entertailion.java.caster.HttpServer.Response;
+import su.litvak.chromecast.api.v2.ChromeCast;
+import su.litvak.chromecast.api.v2.ChromeCasts;
 
 /**
  * Command line ChromeCast client: java -jar caster.jar -h
@@ -120,24 +123,22 @@ public class Main {
 
 			// List ChromeCast devices
 			if (line.hasOption("l")) {
-				final DeviceFinder deviceFinder = new DeviceFinder(new DeviceFinderListener() {
-
-					@Override
-					public void discoveringDevices(DeviceFinder deviceFinder) {
-						Log.d(LOG_TAG, "discoveringDevices");
-					}
-
-					@Override
-					public void discoveredDevices(DeviceFinder deviceFinder) {
-						Log.d(LOG_TAG, "discoveredDevices");
-						TrackedDialServers trackedDialServers = deviceFinder.getTrackedDialServers();
-						for (DialServer dialServer : trackedDialServers) {
-							System.out.println(dialServer.toString());  // keep system for output
-						}
-					}
-
-				});
-				deviceFinder.discoverDevices();
+                try {
+                    ChromeCasts.startDiscovery();
+                    Thread.sleep(500);
+                    Log.d(LOG_TAG, "discoveredDevices");
+                    for (ChromeCast chromeCast : ChromeCasts.get()) {
+                        System.out.println(chromeCast.getName() + " (" + chromeCast.getAddress() + ":" + chromeCast.getPort() + ")");
+                    }
+                } catch (InterruptedException ie) {
+                    Log.e(LOG_TAG, "Device discovery interrupted", ie);
+                } catch (IOException e) {
+                    Log.e(LOG_TAG, "Device discovery failed", e);
+                } finally {
+                    try {
+                        ChromeCasts.stopDiscovery();
+                    } catch (IOException e) { /* consume */ }
+                }
 			}
 
 			// Stream media from internet
@@ -145,7 +146,7 @@ public class Main {
 				Log.d(LOG_TAG, line.getOptionValue("d"));
 				Log.d(LOG_TAG, line.getOptionValue("s"));
 				try {
-					Playback playback = new Playback(platform, appId, new DialServer(InetAddress.getByName(line.getOptionValue("d"))), new PlaybackListener() {
+					Playback playback = new Playback(platform, appId, new ChromeCast(InetAddress.getByName(line.getOptionValue("d")).getHostAddress()), new PlaybackListener() {
 						private int time;
 						private int duration;
 						private int state;
@@ -201,7 +202,7 @@ public class Main {
 				String device = line.getOptionValue("d");
 
 				try {
-					Playback playback = new Playback(platform, appId, new DialServer(InetAddress.getByName(device)), new PlaybackListener() {
+					Playback playback = new Playback(platform, appId, new ChromeCast(InetAddress.getByName(device).getHostAddress()), new PlaybackListener() {
 						private int time;
 						private int duration;
 						private int state;
@@ -253,24 +254,22 @@ public class Main {
 
 			// REST API server
 			if (line.hasOption("r")) {
-				final DeviceFinder deviceFinder = new DeviceFinder(new DeviceFinderListener() {
-
-					@Override
-					public void discoveringDevices(DeviceFinder deviceFinder) {
-						Log.d(LOG_TAG, "discoveringDevices");
-					}
-
-					@Override
-					public void discoveredDevices(DeviceFinder deviceFinder) {
-						Log.d(LOG_TAG, "discoveredDevices");
-						TrackedDialServers trackedDialServers = deviceFinder.getTrackedDialServers();
-						for (DialServer dialServer : trackedDialServers) {
-							Log.d(LOG_TAG, dialServer.toString());
-						}
-					}
-
-				});
-				deviceFinder.discoverDevices();
+                try {
+                    ChromeCasts.startDiscovery();
+                    Thread.sleep(500);
+                    Log.d(LOG_TAG, "discoveredDevices");
+                    for (ChromeCast chromeCast : ChromeCasts.get()) {
+                        System.out.println(chromeCast.getName() + " (" + chromeCast.getAddress() + ":" + chromeCast.getPort() + ")");
+                    }
+                } catch (InterruptedException ie) {
+                    Log.e(LOG_TAG, "Device discovery interrupted", ie);
+                } catch (IOException e) {
+                    Log.e(LOG_TAG, "Device discovery failed", e);
+                } finally {
+                    try {
+                        ChromeCasts.stopDiscovery();
+                    } catch (IOException e) { /* consume */ }
+                }
 				
 				int port = 0;
 				if (line.hasOption("rp")) {
@@ -375,11 +374,10 @@ public class Main {
 							} else if (uri.startsWith(prefixes[1])) { // devices
 								// https://code.google.com/p/json-simple/wiki/EncodingExamples
 								JSONArray list = new JSONArray();
-								TrackedDialServers trackedDialServers = deviceFinder.getTrackedDialServers();
-								for (DialServer dialServer : trackedDialServers) {
+								for (ChromeCast chromeCast : ChromeCasts.get()) {
 									JSONObject obj = new JSONObject();
-									obj.put("name", dialServer.getFriendlyName());
-									obj.put("ip_address", dialServer.getIpAddress().getHostAddress());
+									obj.put("name", chromeCast.getName());
+									obj.put("ip_address", chromeCast.getAddress());
 									list.add(obj);
 								}
 								return new Response(HttpServer.HTTP_OK, "text/plain", list.toJSONString());
@@ -397,10 +395,10 @@ public class Main {
 									if (stream != null) {
 										try {
 											if (playbackMap.get(device) == null) {
-												DialServer dialServer = deviceFinder.getTrackedDialServers().findDialServer(InetAddress.getByName(device));
-												if (dialServer != null) {
+												ChromeCast chromeCast = findChromeCastByAddress(InetAddress.getByName(device).getHostAddress());
+												if (chromeCast != null) {
 													RestPlaybackListener playbackListener = new RestPlaybackListener(device);
-													playbackMap.put(device, new Playback(platform, appId, dialServer, playbackListener));
+													playbackMap.put(device, new Playback(platform, appId, chromeCast, playbackListener));
 													playbackListenerMap.put(device, playbackListener);
 												}
 											}
@@ -415,10 +413,10 @@ public class Main {
 									} else if (file != null) {
 										try {
 											if (playbackMap.get(device) == null) {
-												DialServer dialServer = deviceFinder.getTrackedDialServers().findDialServer(InetAddress.getByName(device));
-												if (dialServer != null) {
+                                                ChromeCast chromeCast = findChromeCastByAddress(InetAddress.getByName(device).getHostAddress());
+												if (chromeCast != null) {
 													RestPlaybackListener playbackListener = new RestPlaybackListener(device);
-													playbackMap.put(device, new Playback(platform, appId, dialServer, playbackListener));
+													playbackMap.put(device, new Playback(platform, appId, chromeCast, playbackListener));
 													playbackListenerMap.put(device, playbackListener);
 												}
 											}
@@ -436,17 +434,17 @@ public class Main {
 									} else if (state != null) {
 										try {
 											if (playbackMap.get(device) == null) {
-												DialServer dialServer = deviceFinder.getTrackedDialServers().findDialServer(InetAddress.getByName(device));
-												if (dialServer != null) {
+                                                ChromeCast chromeCast = findChromeCastByAddress(InetAddress.getByName(device).getHostAddress());
+												if (chromeCast != null) {
 													RestPlaybackListener playbackListener = new RestPlaybackListener(device);
-													playbackMap.put(device, new Playback(platform, appId, dialServer, playbackListener));
+													playbackMap.put(device, new Playback(platform, appId, chromeCast, playbackListener));
 													playbackListenerMap.put(device, playbackListener);
 												}
 											}
 											Playback playback = playbackMap.get(device);
 											if (playback != null) {
 												// Handle case where current app wasn't started with caster
-												playback.setDialServer(deviceFinder.getTrackedDialServers().findDialServer(InetAddress.getByName(device)));
+												playback.setDialServer(findChromeCastByAddress(InetAddress.getByName(device).getHostAddress()));
 												// Change the playback state
 												if (state.equals("play")) {
 													playback.doPlay();
@@ -509,4 +507,12 @@ public class Main {
 		System.out.println(out.toString());
 	}
 
+    private static ChromeCast findChromeCastByAddress(String address) {
+        for (ChromeCast chromeCast : ChromeCasts.get()) {
+            if (chromeCast.getAddress().equals(address)) {
+                return chromeCast;
+            }
+        }
+        return null;
+    }
 }

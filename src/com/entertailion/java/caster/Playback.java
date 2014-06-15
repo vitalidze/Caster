@@ -52,16 +52,14 @@ public class Playback {
 	private PlaybackListener playbackListener;
     private ChromeCast chromeCast;
 	private String appId;
-	private DialServer dialServer;
 	private Platform platform;
 	private boolean isTranscoding;
 
-	public Playback(Platform platform, String appId, DialServer dialServer, PlaybackListener playbackListener) {
+	public Playback(Platform platform, String appId, ChromeCast chromeCast, PlaybackListener playbackListener) {
 		this.platform = platform;
 		this.appId = appId;
-		this.dialServer = dialServer;
+		this.chromeCast = chromeCast;
 		this.playbackListener = playbackListener;
-        this.chromeCast = new ChromeCast(dialServer.getIpAddress().getHostAddress(), dialServer.getPort());
 	}
 
 	public void stream(final String u) {
@@ -151,8 +149,8 @@ public class Playback {
 		if (pos > -1) {
 			extension = file.substring(pos);
 		}
-		if (dialServer != null) {
-			Inet4Address address = platform.getNetworAddress(dialServer.getIpAddress().getHostAddress());
+		if (chromeCast != null) {
+			Inet4Address address = platform.getNetworAddress(chromeCast.getAddress());
 			if (address != null) {
 				String mediaUrl = null;
 				if (isTranscoding) {
@@ -293,12 +291,12 @@ public class Playback {
         }
 	}
 
-	public DialServer getDialServer() {
-		return dialServer;
+	public ChromeCast getDialServer() {
+		return chromeCast;
 	}
 
-	public void setDialServer(DialServer dialServer) {
-		this.dialServer = dialServer;
+	public void setDialServer(ChromeCast chromeCast) {
+		this.chromeCast = chromeCast;
 	}
 
 }
