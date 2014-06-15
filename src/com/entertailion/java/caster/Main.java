@@ -34,6 +34,7 @@ import org.json.simple.JSONObject;
 import com.entertailion.java.caster.HttpServer.Response;
 import su.litvak.chromecast.api.v2.ChromeCast;
 import su.litvak.chromecast.api.v2.ChromeCasts;
+import su.litvak.chromecast.api.v2.MediaStatus;
 
 /**
  * Command line ChromeCast client: java -jar caster.jar -h
@@ -146,46 +147,7 @@ public class Main {
 				Log.d(LOG_TAG, line.getOptionValue("d"));
 				Log.d(LOG_TAG, line.getOptionValue("s"));
 				try {
-					Playback playback = new Playback(platform, appId, new ChromeCast(InetAddress.getByName(line.getOptionValue("d")).getHostAddress()), new PlaybackListener() {
-						private int time;
-						private int duration;
-						private int state;
-
-						@Override
-						public void updateTime(Playback playback, int time) {
-							Log.d(LOG_TAG, "updateTime: " + time);
-							this.time = time;
-						}
-
-						@Override
-						public void updateDuration(Playback playback, int duration) {
-							Log.d(LOG_TAG, "updateDuration: " + duration);
-							this.duration = duration;
-						}
-
-						@Override
-						public void updateState(Playback playback, int state) {
-							Log.d(LOG_TAG, "updateState: " + state);
-							// Stop the app if the video reaches the end
-							if (time > 0 && time == duration && state == 0) {
-								playback.doStop();
-								System.exit(0);
-							}
-						}
-
-						public int getTime() {
-							return time;
-						}
-
-						public int getDuration() {
-							return duration;
-						}
-
-						public int getState() {
-							return state;
-						}
-
-					});
+					Playback playback = new Playback(platform, appId, new ChromeCast(InetAddress.getByName(line.getOptionValue("d")).getHostAddress()));
 					playback.stream(line.getOptionValue("s"));
 				} catch (Exception e) {
 					e.printStackTrace();
@@ -202,46 +164,7 @@ public class Main {
 				String device = line.getOptionValue("d");
 
 				try {
-					Playback playback = new Playback(platform, appId, new ChromeCast(InetAddress.getByName(device).getHostAddress()), new PlaybackListener() {
-						private int time;
-						private int duration;
-						private int state;
-
-						@Override
-						public void updateTime(Playback playback, int time) {
-							Log.d(LOG_TAG, "updateTime: " + time);
-							this.time = time;
-						}
-
-						@Override
-						public void updateDuration(Playback playback, int duration) {
-							Log.d(LOG_TAG, "updateDuration: " + duration);
-							this.duration = duration;
-						}
-
-						@Override
-						public void updateState(Playback playback, int state) {
-							Log.d(LOG_TAG, "updateState: " + state);
-							// Stop the app if the video reaches the end
-							if (time > 0 && time == duration && state == 0) {
-								playback.doStop();
-								System.exit(0);
-							}
-						}
-
-						public int getTime() {
-							return time;
-						}
-
-						public int getDuration() {
-							return duration;
-						}
-
-						public int getState() {
-							return state;
-						}
-
-					});
+					Playback playback = new Playback(platform, appId, new ChromeCast(InetAddress.getByName(device).getHostAddress()));
 					if (line.hasOption("t") && line.hasOption("tp")) {
 						playback.setTranscodingParameters(line.getOptionValue("tp"));
 					}
@@ -283,55 +206,6 @@ public class Main {
 				Playback.startWebserver(port, new WebListener() {
 					String[] prefixes = { "/playback", "/devices" };
 					HashMap<String, Playback> playbackMap = new HashMap<String, Playback>();
-					HashMap<String, RestPlaybackListener> playbackListenerMap = new HashMap<String, RestPlaybackListener>();
-
-					final class RestPlaybackListener implements PlaybackListener {
-						private String device;
-						private int time;
-						private int duration;
-						private int state;
-
-						public RestPlaybackListener(String device) {
-							this.device = device;
-						}
-
-						@Override
-						public void updateTime(Playback playback, int time) {
-							Log.d(LOG_TAG, "updateTime: " + time);
-							this.time = time;
-						}
-
-						@Override
-						public void updateDuration(Playback playback, int duration) {
-							Log.d(LOG_TAG, "updateDuration: " + duration);
-							this.duration = duration;
-						}
-
-						@Override
-						public void updateState(Playback playback, int state) {
-							Log.d(LOG_TAG, "updateState: " + state);
-							this.state = state;
-							// Stop the app if the video reaches the end
-							if (this.time > 0 && this.time == this.duration && state == 0) {
-								playback.doStop();
-								playbackMap.remove(device);
-								playbackListenerMap.remove(device);
-							}
-						}
-
-						public int getTime() {
-							return time;
-						}
-
-						public int getDuration() {
-							return duration;
-						}
-
-						public int getState() {
-							return state;
-						}
-
-					}
 
 					@Override
 					public Response handleRequest(String uri, String method, Properties header, Properties parms) {
@@ -341,35 +215,26 @@ public class Main {
 							if (uri.startsWith(prefixes[0])) { // playback
 								String device = parms.getProperty("device");
 								if (device != null) {
-									RestPlaybackListener playbackListener = playbackListenerMap.get(device);
-									if (playbackListener != null) {
-										// https://code.google.com/p/json-simple/wiki/EncodingExamples
-										JSONObject obj = new JSONObject();
-										obj.put("time", playbackListener.getTime());
-										obj.put("duration", playbackListener.getDuration());
-										switch (playbackListener.getState()) {
-										case 0:
-											obj.put("state", "idle");
-											break;
-										case 1:
-											obj.put("state", "stopped");
-											break;
-										case 2:
-											obj.put("state", "playing");
-											break;
-										default:
-											obj.put("state", "idle");
-											break;
-										}
-										return new Response(HttpServer.HTTP_OK, "text/plain", obj.toJSONString());
-									} else {
-										// Nothing is playing
-										JSONObject obj = new JSONObject();
-										obj.put("time", 0);
-										obj.put("duration", 0);
-										obj.put("state", "stopped");
-										return new Response(HttpServer.HTTP_OK, "text/plain", obj.toJSONString());
-									}
+                                    try {
+                                        ChromeCast chromeCast = findChromeCastByAddress(InetAddress.getByName(device).getHostAddress());
+                                        MediaStatus mediaStatus = chromeCast.getMediaStatus();
+                                        if (mediaStatus != null && mediaStatus.media != null) {
+                                            JSONObject obj = new JSONObject();
+                                            obj.put("time", mediaStatus.currentTime);
+                                            obj.put("duration", mediaStatus.media.duration);
+                                            obj.put("state", mediaStatus.playerState.name());
+                                            return new Response(HttpServer.HTTP_OK, "text/plain", obj.toJSONString());
+                                        } else {
+                                            // Nothing is playing
+                                            JSONObject obj = new JSONObject();
+                                            obj.put("time", 0);
+                                            obj.put("duration", 0);
+                                            obj.put("state", "stopped");
+                                            return new Response(HttpServer.HTTP_OK, "text/plain", obj.toJSONString());
+                                        }
+                                    } catch (Exception e) {
+                                        e.printStackTrace();
+                                    }
 								}
 							} else if (uri.startsWith(prefixes[1])) { // devices
 								// https://code.google.com/p/json-simple/wiki/EncodingExamples
@@ -397,9 +262,7 @@ public class Main {
 											if (playbackMap.get(device) == null) {
 												ChromeCast chromeCast = findChromeCastByAddress(InetAddress.getByName(device).getHostAddress());
 												if (chromeCast != null) {
-													RestPlaybackListener playbackListener = new RestPlaybackListener(device);
-													playbackMap.put(device, new Playback(platform, appId, chromeCast, playbackListener));
-													playbackListenerMap.put(device, playbackListener);
+													playbackMap.put(device, new Playback(platform, appId, chromeCast));
 												}
 											}
 											Playback playback = playbackMap.get(device);
@@ -415,9 +278,7 @@ public class Main {
 											if (playbackMap.get(device) == null) {
                                                 ChromeCast chromeCast = findChromeCastByAddress(InetAddress.getByName(device).getHostAddress());
 												if (chromeCast != null) {
-													RestPlaybackListener playbackListener = new RestPlaybackListener(device);
-													playbackMap.put(device, new Playback(platform, appId, chromeCast, playbackListener));
-													playbackListenerMap.put(device, playbackListener);
+													playbackMap.put(device, new Playback(platform, appId, chromeCast));
 												}
 											}
 											Playback playback = playbackMap.get(device);
@@ -436,15 +297,13 @@ public class Main {
 											if (playbackMap.get(device) == null) {
                                                 ChromeCast chromeCast = findChromeCastByAddress(InetAddress.getByName(device).getHostAddress());
 												if (chromeCast != null) {
-													RestPlaybackListener playbackListener = new RestPlaybackListener(device);
-													playbackMap.put(device, new Playback(platform, appId, chromeCast, playbackListener));
-													playbackListenerMap.put(device, playbackListener);
+													playbackMap.put(device, new Playback(platform, appId, chromeCast));
 												}
 											}
 											Playback playback = playbackMap.get(device);
 											if (playback != null) {
 												// Handle case where current app wasn't started with caster
-												playback.setDialServer(findChromeCastByAddress(InetAddress.getByName(device).getHostAddress()));
+												playback.setDevice(findChromeCastByAddress(InetAddress.getByName(device).getHostAddress()));
 												// Change the playback state
 												if (state.equals("play")) {
 													playback.doPlay();
@@ -455,7 +314,6 @@ public class Main {
 												} else if (state.equals("stop")) {
 													playback.doStop();
 													playbackMap.remove(device);
-													playbackListenerMap.remove(device);
 													return new Response(HttpServer.HTTP_OK, "text/plain", "Ok");
 												} else {
 													Log.e(LOG_TAG, "playback invalid state: "+state);

@@ -49,17 +49,20 @@ public class Playback {
 	private static MediaPlayer mediaPlayer;
 	private static String transcodingParameterValues = TRANSCODING_PARAMETERS;
 
-	private PlaybackListener playbackListener;
     private ChromeCast chromeCast;
 	private String appId;
 	private Platform platform;
 	private boolean isTranscoding;
 
-	public Playback(Platform platform, String appId, ChromeCast chromeCast, PlaybackListener playbackListener) {
+	public Playback(Platform platform, String appId, ChromeCast chromeCast) {
 		this.platform = platform;
 		this.appId = appId;
 		this.chromeCast = chromeCast;
-		this.playbackListener = playbackListener;
+        try {
+            chromeCast.connect();
+        } catch (Exception e) {
+            Log.e(LOG_TAG, "Unable to connect to chromecast device", e);
+        }
 	}
 
 	public void stream(final String u) {
@@ -97,9 +100,6 @@ public class Playback {
 
 				public void playing(MediaPlayer mediaPlayer) {
 					Log.d(LOG_TAG, "VLC Transcoding: Playing");
-					if (playbackListener != null) {
-						playbackListener.updateDuration(Playback.this, (int) (mediaPlayer.getLength() / 1000.0f));
-					}
 				}
 
 				public void paused(MediaPlayer mediaPlayer) {
@@ -291,12 +291,7 @@ public class Playback {
         }
 	}
 
-	public ChromeCast getDialServer() {
-		return chromeCast;
-	}
-
-	public void setDialServer(ChromeCast chromeCast) {
+	public void setDevice(ChromeCast chromeCast) {
 		this.chromeCast = chromeCast;
 	}
-
 }
