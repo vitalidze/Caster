@@ -33,7 +33,7 @@
                     </descriptorRefs>
                     <archive>
                         <manifest>
-                            <mainClass>com.entertailion.java.Caster.Main</mainClass>
+                            <mainClass>com.entertailion.java.caster.Main</mainClass>
                         </manifest>
                     </archive>
                 </configuration>
