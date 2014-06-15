@@ -19,6 +19,7 @@ import java.net.Inet4Address;
 import java.net.ServerSocket;
 import java.util.Properties;
 
+import su.litvak.chromecast.api.v2.ChromeCast;
 import uk.co.caprica.vlcj.player.MediaPlayer;
 import uk.co.caprica.vlcj.player.MediaPlayerEventAdapter;
 import uk.co.caprica.vlcj.player.MediaPlayerFactory;
@@ -49,7 +50,7 @@ public class Playback {
 	private static String transcodingParameterValues = TRANSCODING_PARAMETERS;
 
 	private PlaybackListener playbackListener;
-	private RampClient rampClient;
+    private ChromeCast chromeCast;
 	private String appId;
 	private DialServer dialServer;
 	private Platform platform;
@@ -60,58 +61,26 @@ public class Playback {
 		this.appId = appId;
 		this.dialServer = dialServer;
 		this.playbackListener = playbackListener;
-		this.rampClient = new RampClient(this, playbackListener);
+        this.chromeCast = new ChromeCast(dialServer.getIpAddress().getHostAddress(), dialServer.getPort());
 	}
 
 	public void stream(final String u) {
-		Log.d(LOG_TAG, "stream: " + rampClient);
-		if (!rampClient.isClosed()) {
-			rampClient.closeCurrentApp(dialServer);
-		}
-		if (dialServer != null) {
-			rampClient.launchApp(appId, dialServer, null);
-			// wait for socket to be ready...
-			new Thread(new Runnable() {
-				public void run() {
-					while (!rampClient.isStarted() && !rampClient.isClosed()) {
-						try {
-							// make less than 3 second ping time
-							Thread.sleep(500);
-						} catch (InterruptedException e) {
-						}
-					}
-					if (!rampClient.isClosed()) {
-						try {
-							Thread.sleep(500);
-						} catch (InterruptedException e) {
-						}
-						rampClient.load(u);
-					}
-				}
-			}).start();
-		} else {
-			Log.d(LOG_TAG, "stream: dialserver null");
-		}
+		Log.d(LOG_TAG, "stream: " + u);
+        try {
+            chromeCast.stopApp();
+            chromeCast.launchApp(appId);
+            chromeCast.load(u);
+        } catch (IOException e) {
+            Log.e(LOG_TAG, "Unable to stream", e);
+        }
 	}
 	
-	public void launch(final String body) {
-		Log.d(LOG_TAG, "launch: " + rampClient);
-		if (!rampClient.isClosed()) {
-			rampClient.closeCurrentApp(dialServer);
-		}
-		if (dialServer != null) {
-			rampClient.launchApp(appId, dialServer, body);
-		} else {
-			Log.d(LOG_TAG, "launch: dialserver null");
-		}
-	}
-
 	public void setTranscodingParameters(String transcodingParameterValues) {
 		this.transcodingParameterValues = transcodingParameterValues;
 	}
 
 	public void play(final String file, final boolean isTranscoding) {
-		Log.d(LOG_TAG, "play: " + rampClient);
+		Log.d(LOG_TAG, "play: " + file);
 		this.isTranscoding = isTranscoding;
 		if (isTranscoding) {
 			initializeTranscoder();
@@ -195,37 +164,18 @@ public class Playback {
 					mediaUrl = "http://" + address.getHostAddress() + ":" + port + "/video" + extension;
 				}
 				Log.d(LOG_TAG, "mediaUrl=" + mediaUrl);
-				if (!rampClient.isClosed()) {
-					rampClient.closeCurrentApp(dialServer);
-				}
-				rampClient.launchApp(appId, dialServer, null);
-				final String playbackUrl = mediaUrl;
-				// wait for socket to be ready...
-				new Thread(new Runnable() {
-					public void run() {
-						while (!rampClient.isStarted() && !rampClient.isClosed()) {
-							try {
-								// make less than 3 second ping time
-								Thread.sleep(500);
-							} catch (InterruptedException e) {
-							}
-						}
-						if (!rampClient.isClosed()) {
-							try {
-								Thread.sleep(500);
-							} catch (InterruptedException e) {
-							}
-							if (!rampClient.isClosed()) {
-								if (isTranscoding) {
-									final String transcodingOptions[] = {
-											":sout=#transcode{" + transcodingParameterValues + "}:http{mux=webm,dst=:" + port + "/cast.webm}", ":sout-keep" };
-									mediaPlayer.playMedia(file, transcodingOptions);
-								}
-								rampClient.load(playbackUrl);
-							}
-						}
-					}
-				}).start();
+                try {
+                    chromeCast.stopApp();
+                    chromeCast.launchApp(appId);
+                    if (isTranscoding) {
+                        final String transcodingOptions[] = {
+                                ":sout=#transcode{" + transcodingParameterValues + "}:http{mux=webm,dst=:" + port + "/cast.webm}", ":sout-keep"};
+                        mediaPlayer.playMedia(file, transcodingOptions);
+                    }
+                    chromeCast.load(mediaUrl);
+                } catch (IOException e) {
+                    Log.e(LOG_TAG, "Error playing " + file, e);
+                }
 			} else {
 				Log.d(LOG_TAG, "could not find a network interface");
 			}
@@ -304,10 +254,11 @@ public class Playback {
 	}
 
 	public void doStop() {
-		if (rampClient != null) {
-			rampClient.closeCurrentApp(dialServer);
-			//rampClient = null;
-		}
+        try {
+            chromeCast.stopApp();
+        } catch (IOException e) {
+            Log.e(LOG_TAG, "Error stopping current application", e);
+        }
 		if (!isTranscoding) {
 			if (embeddedServer != null) {
 				embeddedServer.stop();
@@ -326,16 +277,20 @@ public class Playback {
 	}
 
 	public void doPlay() {
-		if (rampClient != null) {
-			rampClient.play();
-		}
+        try {
+            chromeCast.stopApp();
+        } catch (IOException e) {
+            Log.e(LOG_TAG, "Error playing", e);
+        }
 	}
 
 	public void doPause() {
-		Log.d(LOG_TAG, "doPause: " + rampClient);
-		if (rampClient != null) {
-			rampClient.pause();
-		}
+		Log.d(LOG_TAG, "doPause");
+        try {
+            chromeCast.stopApp();
+        } catch (IOException e) {
+            Log.e(LOG_TAG, "Error pausing", e);
+        }
 	}
 
 	public DialServer getDialServer() {
@@ -344,9 +299,6 @@ public class Playback {
 
 	public void setDialServer(DialServer dialServer) {
 		this.dialServer = dialServer;
-		if (rampClient != null) {
-			rampClient.setDialServer(dialServer);
-		}
 	}
 
 }
